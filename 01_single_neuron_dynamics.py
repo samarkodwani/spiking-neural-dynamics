@@ -1,79 +1,140 @@
+"""
+Hodgkin-Huxley Neuron Simulation (1952)
+---------------------------------------
+Implementation of the conductance-based model using Euler integration.
+Simulates a 'Double Pulse' protocol to demonstrate the absolute refractory period.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
-# NEURON PARAMETERS (Izhikevich 2003)
-# RS = Regular Spiking (Cortex Pyramidal): Adapts over time
-# FS = Fast Spiking (Interneuron): No adaptation, high frequency
-# CH = Chattering (Visual Cortex): High freq bursts
-neuron_types = {
-    'RS': {'a': 0.02, 'b': 0.2,  'c': -65, 'd': 8},
-    'FS': {'a': 0.1,  'b': 0.2,  'c': -65, 'd': 2},
-    'CH': {'a': 0.02, 'b': 0.2,  'c': -50, 'd': 2}
-}
+# ==========================================
+# 1. Model Parameters
+# ==========================================
 
-class IzhiNeuron:
-    def __init__(self, a=0.02, b=0.2, c=-65, d=8):
-        self.a, self.b, self.c, self.d = a, b, c, d
-        self.v = -65.0      # Membrane Potential (mV)
-        self.u = b * self.v # Recovery Variable (pA) - Represents K+ channel activation
-        self.spike_count = 0
+# Membrane Capacitance
+C_m = 1.0  # uF/cm^2
 
-    def step(self, dt, I):
-        # 1. SOLVE DIFFERENTIAL EQUATIONS (Forward Euler Method)
-        
-        # Voltage Equation: dv/dt = 0.04v^2 + 5v + 140 - u + I
-        # The quadratic term (v^2) creates the "tipping point" for the spike (threshold behavior)
-        dv_dt = (0.04 * self.v**2) + (5 * self.v) + 140 - self.u + I
-        
-        # Recovery Equation: du/dt = a(bv - u)
-        # 'a' determines how fast the neuron recovers (time scale)
-        # 'b' determines the sensitivity of recovery to sub-threshold voltage
-        du_dt = self.a * (self.b * self.v - self.u)
+# Maximum Conductances
+g_Na_max = 120.0  # mS/cm^2
+g_K_max  = 36.0   # mS/cm^2
+g_L      = 0.3    # mS/cm^2
 
-        self.v += dv_dt * dt
-        self.u += du_dt * dt
+# Nernst Potentials
+E_Na = 50.0       # mV
+E_K  = -77.0      # mV
+E_L  = -54.387    # mV
 
-        # 2. SPIKE & RESET DYNAMICS
-        # If voltage hits +30mV, we assume a spike occurred (Na+ channels snap open)
-        if self.v >= 30:
-            self.v = self.c      # Reset membrane potential (After-Hyperpolarization)
-            self.u += self.d     # Step increase in recovery (Simulates fatigue/adaptation)
-            self.spike_count += 1
-            return True
-            
-        return False
+# ==========================================
+# 2. Simulation Setup
+# ==========================================
 
-# --- SIMULATION ---
-current_type = 'RS' # Try changing to 'FS' or 'CH' to see different firing patterns
-params = neuron_types[current_type]
-neuron = IzhiNeuron(**params)
+time_duration = 50.0   # ms
+dt = 0.01              # ms (Time step for stability)
+t = np.arange(0, time_duration + dt, dt)
 
-T = 1000; dt = 0.1
-time = np.arange(0, T, dt)
+# State Variables
+V = np.zeros(len(t))
+n = np.zeros(len(t))   # K activation
+m = np.zeros(len(t))   # Na activation
+h = np.zeros(len(t))   # Na inactivation
 
-# Step Input: 0 current until 100ms, then 10 pA DC current
-I_input = np.zeros(len(time))
-I_input[int(100/dt):] = 10 
+# ==========================================
+# 3. Gating Kinetics (Alpha/Beta functions)
+# ==========================================
 
-v_hist, u_hist = [], []
+def alpha_n(V): return 0.01 * (V + 55) / (1 - np.exp(-(V + 55) / 10))
+def beta_n(V):  return 0.125 * np.exp(-(V + 65) / 80)
 
-for i, t in enumerate(time):
-    neuron.step(dt, I_input[i])
-    v_hist.append(neuron.v)
-    u_hist.append(neuron.u)
+def alpha_m(V): return 0.1 * (V + 40) / (1 - np.exp(-(V + 40) / 10))
+def beta_m(V):  return 4.0 * np.exp(-(V + 65) / 18)
 
-# --- PLOTTING ---
-plt.figure(figsize=(10, 6))
-plt.subplot(2,1,1)
-plt.plot(time, v_hist)
-plt.title(f'{current_type} Neuron Dynamics')
+def alpha_h(V): return 0.07 * np.exp(-(V + 65) / 20)
+def beta_h(V):  return 1 / (1 + np.exp(-(V + 35) / 10))
+
+# ==========================================
+# 4. Initialization (Steady State @ -65mV)
+# ==========================================
+
+V[0] = -65.0
+n[0] = alpha_n(V[0]) / (alpha_n(V[0]) + beta_n(V[0]))
+m[0] = alpha_m(V[0]) / (alpha_m(V[0]) + beta_m(V[0]))
+h[0] = alpha_h(V[0]) / (alpha_h(V[0]) + beta_h(V[0]))
+
+print("System Initialized. Starting Simulation...")
+
+# ==========================================
+# 5. Main Loop (Euler Method)
+# ==========================================
+
+for i in range(1, len(t)):
+
+    # --- Stimulus Protocol ---
+    # Pulse 1: 10-11ms (Elicit spike)
+    # Pulse 2: 15-16ms (Test for Refractory Period failure)
+    
+    if 10.0 <= t[i-1] <= 11.0:
+        I_inj = 10.0  # uA/cm^2
+    elif 15.0 <= t[i-1] <= 16.0:
+        I_inj = 10.0
+    else:
+        I_inj = 0.0
+
+    # --- Update Gating Variables ---
+    
+    # Potassium (n)
+    dn = alpha_n(V[i-1]) * (1 - n[i-1]) - beta_n(V[i-1]) * n[i-1]
+    n[i] = n[i-1] + dn * dt
+
+    # Sodium (m, h)
+    dm = alpha_m(V[i-1]) * (1 - m[i-1]) - beta_m(V[i-1]) * m[i-1]
+    m[i] = m[i-1] + dm * dt
+
+    dh = alpha_h(V[i-1]) * (1 - h[i-1]) - beta_h(V[i-1]) * h[i-1]
+    h[i] = h[i-1] + dh * dt
+
+    # --- Update Voltage ---
+    
+    g_Na = g_Na_max * (m[i-1]**3) * h[i-1]
+    g_K  = g_K_max  * (n[i-1]**4)
+    
+    I_Na = g_Na * (V[i-1] - E_Na)
+    I_K  = g_K  * (V[i-1] - E_K)
+    I_L  = g_L  * (V[i-1] - E_L)
+
+    dV = (I_inj - I_Na - I_K - I_L) / C_m
+    V[i] = V[i-1] + dV * dt
+
+print("Simulation Complete.")
+
+# ==========================================
+# 6. Visualization
+# ==========================================
+
+plt.figure(figsize=(10, 8))
+
+# Voltage Trace
+plt.subplot(2, 1, 1)
+plt.plot(t, V, 'k', linewidth=1.5)
+plt.title('Hodgkin-Huxley Dynamics: Refractory Period Test')
 plt.ylabel('Voltage (mV)')
-plt.grid(True)
-plt.subplot(2,1,2)
-plt.plot(time, u_hist, color='orange')
-plt.title('Recovery Variable (u) - Tracks Adaptation')
+plt.grid(True, alpha=0.3)
+
+# Highlight Stimuli Regions
+plt.axvspan(10, 11, color='r', alpha=0.1, label='Stimulus 1')
+plt.axvspan(15, 16, color='k', alpha=0.1, label='Stimulus 2')
+plt.legend(loc='upper right')
+
+# Gating Variables
+plt.subplot(2, 1, 2)
+plt.plot(t, m, 'r', label='m (Na activation)')
+plt.plot(t, h, 'g', label='h (Na inactivation)')
+plt.plot(t, n, 'b', label='n (K activation)')
+plt.title('Gating Variables')
+plt.ylabel('Open Probability')
 plt.xlabel('Time (ms)')
-plt.ylabel('Recovery (pA)')
-plt.grid(True)
+plt.legend()
+plt.grid(True, alpha=0.3)
+
 plt.tight_layout()
 plt.show()

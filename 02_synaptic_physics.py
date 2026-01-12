@@ -1,7 +1,16 @@
+"""
+Synaptic Transmission Demo
+--------------------------
+Simulates a single unidirectional excitatory synapse (AMPA-like) between 
+a chattering presynaptic neuron and a regular spiking postsynaptic neuron.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 
-# --- 1. SETUP ---
+# ==========================================
+# 1. Izhikevich Neuron Class
+# ==========================================
 class IzhiNeuron:
     def __init__(self, a=0.02, b=0.2, c=-65, d=8):
         self.a, self.b, self.c, self.d = a, b, c, d
@@ -9,92 +18,89 @@ class IzhiNeuron:
         self.u = self.b * self.v
         
     def step(self, dt, I):
-        dv_dt = (0.04 * self.v**2) + (5 * self.v) + 140 - self.u + I
-        du_dt = self.a * (self.b * self.v - self.u)
-        self.v += dv_dt * dt
-        self.u += du_dt * dt
+        dv = (0.04 * self.v**2 + 5 * self.v + 140 - self.u + I) * dt
+        du = (self.a * (self.b * self.v - self.u)) * dt
+        self.v += dv
+        self.u += du
+        
         if self.v >= 30:
             self.v = self.c
             self.u += self.d
             return True
         return False
 
-# Create Two Neurons
-# N1: The Sender (Chattering Type to show multiple inputs)
+# ==========================================
+# 2. Network Setup
+# ==========================================
+
+# N1: Sender (Chattering)
 n1 = IzhiNeuron(a=0.02, b=0.2, c=-50, d=2) 
-# N2: The Receiver (Regular Spiking)
+# N2: Receiver (RS)
 n2 = IzhiNeuron(a=0.02, b=0.2, c=-65, d=8)
 
-# Synapse Parameters
-w = 1.0         # Synaptic Weight (Strength)
-tau_g = 10.0    # Decay constant (ms) - How fast channels close
-E_syn = 0.0     # Reversal Potential: 0mV = Excitatory (AMPA)
-g = 0.0         # Conductance starts at 0
+# Synapse Parameters (Excitatory)
+w = 1.0        # Synaptic Weight
+tau_g = 10.0   # Conductance decay (ms)
+E_syn = 0.0    # Reversal Potential (0mV = Excitatory)
+g = 0.0        # Initial Conductance
 
-# Time
-T = 200         # Short duration to zoom in on the physics
+# Simulation Parameters
+T = 200
 dt = 0.1
 time = np.arange(0, T, dt)
 
-# Input: Short kick to N1 to make it fire
+# Input Protocol: 20ms pulse to trigger N1
 I_input = np.zeros(len(time))
 I_input[int(20/dt):int(40/dt)] = 20 
 
-# Storage
-v1_hist = []
-v2_hist = []
-g_hist  = []
+# Data Storage
+v1_hist, v2_hist, g_hist = [], [], []
 
-# --- 2. MAIN LOOP ---
+# ==========================================
+# 3. Simulation Loop
+# ==========================================
 for i, t in enumerate(time):
-    # A. Synaptic Physics (Kinetic Model)
-    # The conductance 'g' decays exponentially over time (channels closing)
-    dg_dt = -g / tau_g
-    g += dg_dt * dt
+    # Synaptic Dynamics (Exponential Decay)
+    g += (-g / tau_g) * dt
     
-    # B. Calculate Current (Ohm's Law)
-    # The current entering N2 depends on the conductance 'g' and the driving force (V - E)
+    # Calculate Synaptic Current
     I_syn = -g * (n2.v - E_syn)
     
-    # C. Update Neurons
-    spike1 = n1.step(dt, I_input[i]) # N1 gets external input
-    n2.step(dt, I_syn)               # N2 gets synaptic input
+    # Update Neurons
+    spike1 = n1.step(dt, I_input[i])
+    n2.step(dt, I_syn)
     
-    # D. Transmission
-    # If N1 spikes, neurotransmitters are released -> g increases
+    # Transmission Event
     if spike1:
         g += w
 
-    # Store Data
     v1_hist.append(n1.v)
     v2_hist.append(n2.v)
     g_hist.append(g)
 
-# --- 3. PLOTTING ---
+# ==========================================
+# 4. Visualization
+# ==========================================
 plt.figure(figsize=(10, 8))
 
-# Plot 1: The Sender
 plt.subplot(3, 1, 1)
 plt.plot(time, v1_hist, 'b')
-plt.title('Step 1: Pre-Synaptic Neuron Fires (The Trigger)') 
+plt.title('Presynaptic Neuron (N1)')
 plt.ylabel('Voltage (mV)')
-plt.grid(True)
+plt.grid(True, alpha=0.3)
 
-# Plot 2: The Mechanism (Most Important for Biophysics)
 plt.subplot(3, 1, 2)
 plt.plot(time, g_hist, 'g')
-plt.title('Step 2: Synaptic Conductance (The Mechanism)')
-plt.ylabel('Conductance (S)')
-plt.text(50, max(g_hist)*0.5, "Exponential Decay (Channel Closing)", color='green', fontsize=10)
-plt.grid(True)
+plt.title('Synaptic Conductance (g)')
+plt.ylabel('Siemens')
+plt.grid(True, alpha=0.3)
 
-# Plot 3: The Receiver
 plt.subplot(3, 1, 3)
 plt.plot(time, v2_hist, 'r')
-plt.title('Step 3: Post-Synaptic Response') 
+plt.title('Postsynaptic Response (N2)') 
 plt.xlabel('Time (ms)')
 plt.ylabel('Voltage (mV)')
-plt.grid(True)
+plt.grid(True, alpha=0.3)
 
 plt.tight_layout()
 plt.show()

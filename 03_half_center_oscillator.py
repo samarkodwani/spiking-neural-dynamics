@@ -20,19 +20,17 @@ class IzhiNeuron:
         return False
 
 # SETUP: Two identical neurons inhibited by each other
-# RS Parameters provide the adaptation ('d') needed for fatigue
 n1 = IzhiNeuron(a=0.02, b=0.2, c=-65, d=8)
 n2 = IzhiNeuron(a=0.02, b=0.2, c=-65, d=8)
 
-# SYMMETRY BREAKING
-# We force one neuron to be closer to threshold so it "wins" the first cycle
+#One of the neurons is nearer to the threshold
 n1.v = -60.0 
 n2.v = -70.0
 
 # OSCILLATOR PARAMETERS
-w = 20.0        # Strong Mutual Inhibition (The "Punch")
+w = 20.0        # Mutual Inhibition 
 tau_g = 10.0    # Slower decay allows longer burst durations
-E_syn = -80.0   # GABAergic Reversal Potential
+E_syn = -80.0   # Reversal Potential
 I_drive = 5.0   # Constant DC drive to both neurons
 
 g12 = 0.0 # Synapse N1 -> N2
@@ -48,9 +46,6 @@ for t in time:
     g21 *= np.exp(-dt / tau_g)
      
     # 2. CALCULATE CROSS-INHIBITION
-    # N1 is inhibited by N2 (g21)
-    # N2 is inhibited by N1 (g12)
-    # The 'Driving Force' (v - E_syn) ensures current is zero if neuron is already at -80mV
     I_to_n1 = -g21 * (n1.v - E_syn)
     I_to_n2 = -g12 * (n2.v - E_syn)
      
@@ -81,4 +76,5 @@ plt.xlabel('Time (ms)')
 plt.ylabel('Voltage (mV)')
 plt.legend()
 plt.grid(True)
+
 plt.show()

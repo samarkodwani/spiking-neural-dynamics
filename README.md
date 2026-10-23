@@ -1,9 +1,4 @@
-Project: Spiking Neural Network from Scratch
-
-A first-principles implementation of Neuronal Dynamics in Python. The code features:
-
-Izhikevich Model: Implementation of a single neuron simulating three different spiking behaviors (RS, FS, CH).
-![Single Neuron Dynamics](plots/single_neuron.png)
+Project: A Small Spiking Neural Network from Scratch
 
 Synaptic Physics: Conductance-based synaptic dynamics for a two-neuron system.
 ![Synaptic Physics](plots/synaptic_physics.png)

@@ -92,7 +92,7 @@ plt.grid(True, alpha=0.3)
 plt.subplot(3, 1, 2)
 plt.plot(time, g_hist, 'g')
 plt.title('Synaptic Conductance (g)')
-plt.ylabel('Siemens')
+plt.ylabel('Arbitrary Units (a.u.)')
 plt.grid(True, alpha=0.3)
 
 plt.subplot(3, 1, 3)
